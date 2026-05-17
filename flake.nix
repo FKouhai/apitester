@@ -5,6 +5,10 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    go-overlay = {
+      url = "github:purpleclay/go-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     crane.url = "github:ipetkov/crane";
     git-hooks = {
       url = "github:cachix/git-hooks.nix";
@@ -17,6 +21,7 @@
       self,
       nixpkgs,
       rust-overlay,
+      go-overlay,
       crane,
       git-hooks,
     }:
@@ -33,14 +38,17 @@
         let
           pkgs = import nixpkgs {
             inherit system;
-            overlays = [ (import rust-overlay) ];
+            overlays = [
+              (import rust-overlay)
+              go-overlay.overlays.default
+            ];
           };
-          rustToolchain = pkgs.pkgsBuildHost.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+          rustToolchain = pkgs.pkgsBuildHost.rust-bin.fromRustupToolchainFile ./apitester/rust-toolchain.toml;
           craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
           commonArgs = {
             src = pkgs.lib.cleanSourceWith {
-              src = ./.;
+              src = ./apitester;
               filter =
                 path: type: (craneLib.filterCargoSources path type) || (pkgs.lib.hasInfix "/tests/fixtures" path);
             };
@@ -57,19 +65,62 @@
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
           bin = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
 
+          lint = pkgs.writeShellApplication {
+            name = "lint";
+            runtimeInputs = [ rustToolchain ];
+            text = "cargo clippy --no-deps -- -D warnings";
+          };
+          test-all = pkgs.writeShellApplication {
+            name = "test-all";
+            runtimeInputs = [ rustToolchain ];
+            text = "cargo test";
+          };
+          build = pkgs.writeShellApplication {
+            name = "build";
+            runtimeInputs = [ rustToolchain ];
+            text = "cargo build";
+          };
+          coverage = pkgs.writeShellApplication {
+            name = "coverage";
+            runtimeInputs = [
+              rustToolchain
+              pkgs.cargo-llvm-cov
+            ];
+            text = "cargo llvm-cov --open";
+          };
+
+          image = pkgs.dockerTools.buildLayeredImage {
+            name = "apitester";
+            tag = "latest";
+            contents = [
+              bin
+              pkgs.cacert
+            ];
+            config.Entrypoint = [ "${bin}/bin/apitester" ];
+          };
+
           hooks = git-hooks.lib.${system}.run {
-            src = ./.;
+            src = ./apitester;
             hooks = {
-              rustfmt.enable = true;
+              rustfmt = {
+                enable = true;
+                entry = "${rustToolchain}/bin/rustfmt --edition 2021";
+                types = [ "rust" ];
+              };
               clippy.enable = false;
               check-clippy = {
                 enable = true;
                 name = "clippy";
-                entry = "${rustToolchain}/bin/cargo-clippy clippy --no-deps -- -D warnings";
+                entry = "${rustToolchain}/bin/cargo-clippy clippy --manifest-path apitester/Cargo.toml --no-deps -- -D warnings";
                 pass_filenames = false;
                 types = [ "rust" ];
               };
-              cargo-check.enable = true;
+              cargo-check = {
+                enable = true;
+                entry = "${rustToolchain}/bin/cargo check --manifest-path apitester/Cargo.toml";
+                pass_filenames = false;
+                types = [ "rust" ];
+              };
               convco.enable = true;
               nixfmt.enable = true;
               statix.enable = true;
@@ -77,10 +128,24 @@
           };
         in
         {
-          packages.default = bin;
-          devShells.default = import ./shell.nix {
-            inherit pkgs bin;
-            inherit (hooks) shellHook;
+          packages = {
+            default = bin;
+            inherit bin image;
+          };
+          devShells = rec {
+            apitester = import ./apitester/shell.nix {
+              inherit
+                pkgs
+                bin
+                lint
+                test-all
+                build
+                coverage
+                ;
+              inherit (hooks) shellHook;
+            };
+            controller = import ./controller/shell.nix { inherit pkgs; };
+            default = apitester;
           };
           checks = {
             inherit hooks;

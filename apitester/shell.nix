@@ -1,6 +1,10 @@
 {
   pkgs,
   bin,
+  lint,
+  test-all,
+  build,
+  coverage,
   shellHook ? "",
 }:
 pkgs.mkShell {
@@ -9,6 +13,10 @@ pkgs.mkShell {
     cargo-llvm-cov
     cargo-watch
     clippy
+    lint
+    test-all
+    build
+    coverage
   ];
   inherit shellHook;
 }
