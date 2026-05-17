@@ -1,0 +1,8 @@
+base_url: http://api.example.com
+requests:
+  - name: health check
+    method: GET
+    path: /health
+    assert:
+      status: 200
+      body_contains: "httpbin"

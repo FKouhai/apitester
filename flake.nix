@@ -61,7 +61,14 @@
             src = ./.;
             hooks = {
               rustfmt.enable = true;
-              clippy.enable = true;
+              clippy.enable = false;
+              check-clippy = {
+                enable = true;
+                name = "clippy";
+                entry = "${rustToolchain}/bin/cargo-clippy clippy --no-deps -- -D warnings";
+                pass_filenames = false;
+                types = [ "rust" ];
+              };
               cargo-check.enable = true;
               convco.enable = true;
               nixfmt.enable = true;

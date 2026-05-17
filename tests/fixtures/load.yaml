@@ -1,0 +1,12 @@
+base_url: https://api.example.com
+requests:
+  - name: health check
+    method: GET
+    path: /health
+    assert:
+      status: 200
+load:
+  concurrency: 10
+  duration: 5s
+  requests:
+    - health check
