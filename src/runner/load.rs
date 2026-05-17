@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use futures::{StreamExt, stream::FuturesUnordered};
+
 use crate::{config::ValidatedTestConfig, http, stats::Stats};
 
 // Load test runner
@@ -20,7 +22,7 @@ pub async fn run(config: &ValidatedTestConfig) -> Result<LoadResult, anyhow::Err
     let semaphore = Arc::new(tokio::sync::Semaphore::new(load_config.concurrency));
     let mut stats = Stats::new();
     let mut i = 0;
-    let mut handles = Vec::new();
+    let mut handles = FuturesUnordered::new();
     let mut error_count: u64 = 0;
     let mut total_reqs: u64 = 0;
 
@@ -36,10 +38,10 @@ pub async fn run(config: &ValidatedTestConfig) -> Result<LoadResult, anyhow::Err
             http::execute(&req, &client).await
         }));
     }
-    for handle in handles {
-        match handle.await? {
-            Ok(response) => {
-                stats.record(response.latency);
+    while let Some(result) = handles.next().await {
+        match result? {
+            Ok(result) => {
+                stats.record(result.latency);
                 total_reqs += 1;
             }
             Err(_) => {
@@ -48,6 +50,7 @@ pub async fn run(config: &ValidatedTestConfig) -> Result<LoadResult, anyhow::Err
             }
         }
     }
+
     Ok(LoadResult {
         stats,
         total_reqs,
