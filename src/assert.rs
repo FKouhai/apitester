@@ -49,8 +49,13 @@ pub fn check_all(assert: &ValidatedAssert, response: &ResponseData) -> Vec<Check
     if let Some(expected) = &assert.body_json {
         match serde_json::from_str::<serde_json::Value>(&response.body) {
             Ok(parsed) => {
+                let passed = if let Some(map) = expected.as_object() {
+                    map.iter().all(|(k, v)| parsed.get(k) == Some(v))
+                } else {
+                    false
+                };
                 results.push(CheckResult {
-                    passed: parsed == *expected,
+                    passed,
                     rule_name: "Body JSON".into(),
                     message: format!("Expected body to be '{}'", expected),
                 });
@@ -260,6 +265,27 @@ mod tests {
             status: 200,
             headers: HashMap::from([("content-type".to_string(), "application/json".to_string())]),
             body: r#"{"status":"ok","count":42}"#.into(),
+            latency: Duration::from_millis(50),
+        };
+        let results = check_all(&assert, &response_data);
+        assert!(results[0].passed);
+    }
+    #[test]
+    fn body_json_passes_subset() {
+        let assert = ValidatedAssert {
+            status: None,
+            headers: None,
+            body_contains: None,
+            body_json: Some(serde_json::json!({
+                "status": "ok",
+                "count": 42
+            })),
+            latency_lt: None,
+        };
+        let response_data = ResponseData {
+            status: 200,
+            headers: HashMap::from([("content-type".to_string(), "application/json".to_string())]),
+            body: r#"{"status":"ok","count":42, "response":"hello","proto":"mtls"}"#.into(),
             latency: Duration::from_millis(50),
         };
         let results = check_all(&assert, &response_data);
