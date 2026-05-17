@@ -65,30 +65,6 @@
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
           bin = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
 
-          lint = pkgs.writeShellApplication {
-            name = "lint";
-            runtimeInputs = [ rustToolchain ];
-            text = "cargo clippy --no-deps -- -D warnings";
-          };
-          test-all = pkgs.writeShellApplication {
-            name = "test-all";
-            runtimeInputs = [ rustToolchain ];
-            text = "cargo test";
-          };
-          build = pkgs.writeShellApplication {
-            name = "build";
-            runtimeInputs = [ rustToolchain ];
-            text = "cargo build";
-          };
-          coverage = pkgs.writeShellApplication {
-            name = "coverage";
-            runtimeInputs = [
-              rustToolchain
-              pkgs.cargo-llvm-cov
-            ];
-            text = "cargo llvm-cov --open";
-          };
-
           image = pkgs.dockerTools.buildLayeredImage {
             name = "apitester";
             tag = "latest";
@@ -134,14 +110,7 @@
           };
           devShells = rec {
             apitester = import ./apitester/shell.nix {
-              inherit
-                pkgs
-                bin
-                lint
-                test-all
-                build
-                coverage
-                ;
+              inherit pkgs bin;
               inherit (hooks) shellHook;
             };
             controller = import ./controller/shell.nix { inherit pkgs; };
