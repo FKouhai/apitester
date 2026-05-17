@@ -49,15 +49,26 @@ pub fn check_all(assert: &ValidatedAssert, response: &ResponseData) -> Vec<Check
     if let Some(expected) = &assert.body_json {
         match serde_json::from_str::<serde_json::Value>(&response.body) {
             Ok(parsed) => {
-                let passed = if let Some(map) = expected.as_object() {
-                    map.iter().all(|(k, v)| parsed.get(k) == Some(v))
+                let (passed, message) = if let Some(map) = expected.as_object() {
+                    let failed: Vec<String> = map
+                        .iter()
+                        .filter(|(k, v)| parsed.get(*k) != Some(v))
+                        .map(|(k, _)| k.clone())
+                        .collect();
+                    if failed.is_empty() {
+                        (true, "all expected keys matched".to_string())
+                    } else {
+                        (false, format!("keys did not match: {}", failed.join(", ")))
+                    }
+                } else if parsed == *expected {
+                    (true, "body matched".to_string())
                 } else {
-                    false
+                    (false, format!("expected {}, got {}", expected, parsed))
                 };
                 results.push(CheckResult {
                     passed,
                     rule_name: "Body JSON".into(),
-                    message: format!("Expected body to be '{}'", expected),
+                    message,
                 });
             }
             Err(_) => {
